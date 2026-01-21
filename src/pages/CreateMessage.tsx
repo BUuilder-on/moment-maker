@@ -1,32 +1,43 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Lock, ArrowLeft, ArrowRight, Calendar, Clock, User, Check, Copy, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import Logo from "@/components/Logo";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
 const CreateMessage = () => {
   const navigate = useNavigate();
+  const { user, profile, isLoading, refreshProfile } = useAuth();
   const [currentStep, setCurrentStep] = useState<Step>(1);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     recipientName: "",
+    recipientEmail: "",
     message: "",
     unlockDate: undefined as Date | undefined,
     unlockTime: "",
   });
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      navigate("/auth");
+    }
+  }, [user, isLoading, navigate]);
 
   const steps = [
     { number: 1, label: "Destinataire" },
@@ -59,16 +70,62 @@ const CreateMessage = () => {
   };
 
   const handleSubmit = async () => {
-    setIsLoading(true);
+    if (!user || !profile) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
+    if (profile.credits < 1) {
+      toast.error("Vous n'avez pas assez de crédits");
+      return;
+    }
+
+    setIsSubmitting(true);
     
-    // Simulation - À remplacer par l'intégration Supabase
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // Create unlock datetime
+      const [hours, minutes] = formData.unlockTime.split(':').map(Number);
+      const unlockAt = new Date(formData.unlockDate!);
+      unlockAt.setHours(hours, minutes, 0, 0);
+
+      // Insert message
+      const { data: messageData, error: messageError } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: user.id,
+          recipient_name: formData.recipientName,
+          recipient_email: formData.recipientEmail || null,
+          content: formData.message,
+          unlock_at: unlockAt.toISOString(),
+        })
+        .select()
+        .single();
+
+      if (messageError) {
+        throw messageError;
+      }
+
+      // Deduct credit
+      const { error: creditError } = await supabase
+        .from("profiles")
+        .update({ credits: profile.credits - 1 })
+        .eq("user_id", user.id);
+
+      if (creditError) {
+        throw creditError;
+      }
+
+      // Refresh profile to update credits
+      await refreshProfile();
+
+      const link = `${window.location.origin}/m/${messageData.id}`;
+      setGeneratedLink(link);
+      toast.success("Votre message a été verrouillé !");
+    } catch (error: any) {
+      toast.error("Erreur lors de la création: " + error.message);
+    }
     
-    const fakeLink = `${window.location.origin}/m/${crypto.randomUUID().slice(0, 8)}`;
-    setGeneratedLink(fakeLink);
-    toast.success("Votre message a été verrouillé !");
-    
-    setIsLoading(false);
+    setIsSubmitting(false);
   };
 
   const copyLink = () => {
@@ -94,18 +151,19 @@ const CreateMessage = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-dore border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="w-full py-4 px-6 border-b border-border/50 flex items-center justify-between">
-        <Link to="/dashboard" className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-            <Lock className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="font-serif text-lg font-semibold text-foreground">
-            À L'Heure Juste
-          </span>
-        </Link>
+        <Logo to="/dashboard" />
         
         {!generatedLink && (
           <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
@@ -211,17 +269,32 @@ const CreateMessage = () => {
                 <CardContent className="space-y-6">
                   {/* Step 1: Recipient */}
                   {currentStep === 1 && (
-                    <div className="space-y-3">
-                      <Label htmlFor="recipientName">Prénom du destinataire</Label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <Label htmlFor="recipientName">Prénom du destinataire *</Label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                          <Input
+                            id="recipientName"
+                            placeholder="Prénom"
+                            value={formData.recipientName}
+                            onChange={(e) => setFormData(prev => ({ ...prev, recipientName: e.target.value }))}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <Label htmlFor="recipientEmail">Email du destinataire (optionnel)</Label>
                         <Input
-                          id="recipientName"
-                          placeholder="Prénom"
-                          value={formData.recipientName}
-                          onChange={(e) => setFormData(prev => ({ ...prev, recipientName: e.target.value }))}
-                          className="pl-10"
+                          id="recipientEmail"
+                          type="email"
+                          placeholder="email@exemple.com"
+                          value={formData.recipientEmail}
+                          onChange={(e) => setFormData(prev => ({ ...prev, recipientEmail: e.target.value }))}
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Si fourni, le destinataire recevra une notification
+                        </p>
                       </div>
                     </div>
                   )}
@@ -319,9 +392,10 @@ const CreateMessage = () => {
                           <p className="text-foreground whitespace-pre-wrap">{formData.message}</p>
                         </div>
                       </div>
-                      <p className="text-sm text-center text-muted-foreground">
-                        Cette action utilisera 1 crédit
-                      </p>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-dore/10 border border-dore/20">
+                        <span className="text-sm text-muted-foreground">Crédits restants après envoi</span>
+                        <span className="font-bold text-dore">{(profile?.credits ?? 1) - 1}</span>
+                      </div>
                     </div>
                   )}
 
@@ -346,10 +420,10 @@ const CreateMessage = () => {
                     ) : (
                       <Button 
                         onClick={handleSubmit}
-                        disabled={isLoading}
+                        disabled={isSubmitting || (profile?.credits ?? 0) < 1}
                         className="flex-1 bg-dore hover:bg-dore-dark text-accent-foreground"
                       >
-                        {isLoading ? (
+                        {isSubmitting ? (
                           <span className="flex items-center gap-2">
                             <span className="w-4 h-4 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
                             Verrouillage...

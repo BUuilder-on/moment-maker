@@ -5,18 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Link, useParams } from "react-router-dom";
 import { differenceInSeconds, format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { supabase } from "@/integrations/supabase/client";
+import Logo from "@/components/Logo";
+
+interface Message {
+  id: string;
+  recipient_name: string;
+  content: string;
+  unlock_at: string;
+  is_read: boolean;
+}
 
 const ViewMessage = () => {
   const { messageId } = useParams();
-  
-  // Simulated message data - will come from Supabase
-  const [message] = useState({
-    recipientName: "Mon amour",
-    content: "Ceci est un message de démonstration qui sera déverrouillé à la date choisie. 💕",
-    unlockDate: new Date(Date.now() + 60000), // 1 minute from now for demo
-    senderName: "Anonyme",
-  });
-
+  const [message, setMessage] = useState<Message | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [countdown, setCountdown] = useState({
     days: 0,
@@ -26,9 +30,52 @@ const ViewMessage = () => {
   });
 
   useEffect(() => {
+    const fetchMessage = async () => {
+      if (!messageId) {
+        setError("Message introuvable");
+        setIsLoading(false);
+        return;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("id", messageId)
+        .maybeSingle();
+
+      if (fetchError || !data) {
+        setError("Ce message n'existe pas ou a été supprimé");
+        setIsLoading(false);
+        return;
+      }
+
+      setMessage(data);
+      
+      const unlockDate = new Date(data.unlock_at);
+      const now = new Date();
+      setIsUnlocked(unlockDate <= now);
+      
+      // Mark as read if unlocked
+      if (unlockDate <= now && !data.is_read) {
+        await supabase
+          .from("messages")
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq("id", messageId);
+      }
+      
+      setIsLoading(false);
+    };
+
+    fetchMessage();
+  }, [messageId]);
+
+  useEffect(() => {
+    if (!message) return;
+
     const updateCountdown = () => {
       const now = new Date();
-      const diff = differenceInSeconds(message.unlockDate, now);
+      const unlockDate = new Date(message.unlock_at);
+      const diff = differenceInSeconds(unlockDate, now);
 
       if (diff <= 0) {
         setIsUnlocked(true);
@@ -47,20 +94,49 @@ const ViewMessage = () => {
     const interval = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(interval);
-  }, [message.unlockDate]);
+  }, [message]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-dore border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !message) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <header className="w-full py-4 px-6">
+          <Logo />
+        </header>
+        <main className="flex-1 flex items-center justify-center px-6">
+          <Card className="max-w-md w-full border-border/50">
+            <CardContent className="py-12 text-center">
+              <Lock className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h1 className="font-serif text-xl font-bold text-foreground mb-2">
+                Message introuvable
+              </h1>
+              <p className="text-muted-foreground mb-6">
+                {error || "Ce message n'existe pas ou a été supprimé."}
+              </p>
+              <Link to="/">
+                <Button variant="outline">Retour à l'accueil</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  const unlockDate = new Date(message.unlock_at);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="w-full py-4 px-6">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-            <Lock className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="font-serif text-lg font-semibold text-foreground">
-            À L'Heure Juste
-          </span>
-        </Link>
+        <Logo />
       </header>
 
       {/* Main Content */}
@@ -77,14 +153,14 @@ const ViewMessage = () => {
                   Votre message est prêt !
                 </h1>
                 <p className="text-muted-foreground mt-1">
-                  Déverrouillé le {format(message.unlockDate, "PPP 'à' HH:mm", { locale: fr })}
+                  Déverrouillé le {format(unlockDate, "PPP 'à' HH:mm", { locale: fr })}
                 </p>
               </div>
               
               <CardContent className="p-6 space-y-6">
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-2">
-                    Pour {message.recipientName}
+                    Pour {message.recipient_name}
                   </p>
                 </div>
                 
@@ -112,7 +188,7 @@ const ViewMessage = () => {
                     Un message spécial vous attend !
                   </h1>
                   <p className="text-muted-foreground">
-                    Bonjour {message.recipientName}, un message vous est réservé.
+                    Bonjour {message.recipient_name}, un message vous est réservé.
                   </p>
                 </div>
 
@@ -131,7 +207,7 @@ const ViewMessage = () => {
                   </div>
                   
                   <p className="text-sm text-muted-foreground mt-4">
-                    Le {format(message.unlockDate, "PPP 'à' HH:mm", { locale: fr })}
+                    Le {format(unlockDate, "PPP 'à' HH:mm", { locale: fr })}
                   </p>
                 </div>
 
