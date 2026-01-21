@@ -1,15 +1,19 @@
-import { useState } from "react";
-import { Lock, Mail, KeyRound, ArrowRight, Eye, EyeOff, Ticket } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Mail, KeyRound, ArrowRight, Eye, EyeOff, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import Logo from "@/components/Logo";
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user, signUp, signIn, isLoading: authLoading } = useAuth();
+  
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : "login";
   
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
@@ -22,24 +26,63 @@ const Auth = () => {
     activationCode: "",
   });
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate("/dashboard");
+    }
+  }, [user, authLoading, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulation - À remplacer par l'intégration Supabase
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      if (mode === "signup") {
+        if (!formData.activationCode) {
+          toast.error("Le code d'activation est obligatoire");
+          setIsLoading(false);
+          return;
+        }
 
-    if (mode === "signup") {
-      if (!formData.activationCode) {
-        toast.error("Le code d'activation est obligatoire");
-        setIsLoading(false);
-        return;
+        const { error } = await signUp(
+          formData.email,
+          formData.password,
+          formData.activationCode
+        );
+
+        if (error) {
+          if (error.message.includes("already registered")) {
+            toast.error("Cette adresse email est déjà utilisée");
+          } else if (error.message.includes("activation")) {
+            toast.error(error.message);
+          } else {
+            toast.error("Erreur lors de l'inscription: " + error.message);
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        toast.success("Compte créé avec succès ! Bienvenue !");
+        navigate("/dashboard");
+      } else {
+        const { error } = await signIn(formData.email, formData.password);
+
+        if (error) {
+          if (error.message.includes("Invalid login credentials")) {
+            toast.error("Email ou mot de passe incorrect");
+          } else {
+            toast.error("Erreur de connexion: " + error.message);
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        toast.success("Connexion réussie !");
+        navigate("/dashboard");
       }
-      toast.success("Compte créé avec succès ! Vous avez reçu 2 crédits.");
-      navigate("/dashboard");
-    } else {
-      toast.success("Connexion réussie !");
-      navigate("/dashboard");
+    } catch (error) {
+      toast.error("Une erreur est survenue");
     }
 
     setIsLoading(false);
@@ -52,26 +95,27 @@ const Auth = () => {
     }));
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-dore border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="w-full py-4 px-6">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-            <Lock className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="font-serif text-lg font-semibold text-foreground">
-            À L'Heure Juste
-          </span>
-        </Link>
+        <Logo />
       </header>
 
       {/* Main Content */}
       <main className="flex-1 flex items-center justify-center px-6 py-8">
         <Card className="w-full max-w-md border-border/50 shadow-lg animate-scale-in">
           <CardHeader className="text-center space-y-2">
-            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
-              <Lock className="w-8 h-8 text-primary" />
+            <div className="mx-auto mb-2">
+              <Logo to="" size="lg" showText={false} />
             </div>
             <CardTitle className="font-serif text-2xl">
               {mode === "login" ? "Bon retour parmi nous" : "Créez votre compte"}
@@ -143,7 +187,7 @@ const Auth = () => {
                       placeholder="Entrez votre code"
                       value={formData.activationCode}
                       onChange={handleInputChange}
-                      className="pl-10"
+                      className="pl-10 uppercase"
                       required
                     />
                   </div>

@@ -1,20 +1,14 @@
-import { Lock, Heart, Clock, Sparkles } from "lucide-react";
+import { Heart, Clock, Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import Logo from "@/components/Logo";
 
 const Index = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="w-full py-4 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-            <Lock className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="font-serif text-lg font-semibold text-foreground">
-            À L'Heure Juste
-          </span>
-        </div>
+        <Logo showText={false} />
         <Link to="/auth">
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
             Connexion
@@ -25,14 +19,9 @@ const Index = () => {
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-12">
         <div className="max-w-lg mx-auto text-center space-y-8 animate-fade-in">
-          {/* Floating Icon */}
+          {/* Logo */}
           <div className="relative inline-block">
-            <div className="w-24 h-24 rounded-full bg-primary/30 flex items-center justify-center animate-float">
-              <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center">
-                <Lock className="w-8 h-8 text-primary-foreground" />
-              </div>
-            </div>
-            <Heart className="absolute -top-1 -right-1 w-6 h-6 text-dore animate-pulse-soft" fill="currentColor" />
+            <Logo to="" size="lg" showText={false} />
           </div>
 
           {/* Title */}
