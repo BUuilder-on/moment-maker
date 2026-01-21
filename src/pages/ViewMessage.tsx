@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
-import { Lock, Heart, Clock, Unlock, Sparkles, Send } from "lucide-react";
+import { Lock, Heart, Clock, Unlock, Sparkles, Send, Copy, Share2, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link, useParams } from "react-router-dom";
 import { differenceInSeconds, format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 
 interface Message {
   id: string;
+  sender_id: string;
   recipient_name: string;
   content: string;
   unlock_at: string;
@@ -18,16 +21,51 @@ interface Message {
 
 const ViewMessage = () => {
   const { messageId } = useParams();
+  const { user } = useAuth();
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState({
     days: 0,
     hours: 0,
     minutes: 0,
     seconds: 0,
   });
+
+  // Check if current user is the creator
+  const isCreator = user && message && user.id === message.sender_id;
+
+  // Get the shareable link
+  const messageLink = `${window.location.origin}/m/${messageId}`;
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(messageLink);
+      setCopied(true);
+      toast.success("Lien copié !");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Impossible de copier le lien");
+    }
+  };
+
+  const shareLink = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Un message spécial vous attend !",
+          text: `${message?.recipient_name}, un message vous est réservé sur À L'Heure Juste.`,
+          url: messageLink,
+        });
+      } catch {
+        copyLink();
+      }
+    } else {
+      copyLink();
+    }
+  };
 
   useEffect(() => {
     const fetchMessage = async () => {
@@ -145,14 +183,53 @@ const ViewMessage = () => {
     <div className="min-h-screen bg-gradient-to-b from-background via-primary/5 to-background flex flex-col">
       {/* Header with Logo */}
       <header className="w-full py-6 px-6 text-center">
-        <Link to="/">
+        <Link to={user ? "/dashboard" : "/"}>
           <img src={logo} alt="À L'Heure Juste" className="w-16 h-16 mx-auto" />
         </Link>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-4">
-        <div className="max-w-md mx-auto w-full space-y-8">
+        <div className="max-w-md mx-auto w-full space-y-6">
+          
+          {/* ========== CREATOR ACTIONS - Share Link ========== */}
+          {isCreator && (
+            <Card className="border-dore/30 bg-dore/5">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground mb-1">Lien à partager</p>
+                    <p className="text-sm text-foreground truncate font-mono">
+                      {messageLink}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={copyLink}
+                      className="border-dore/30 hover:bg-dore/10"
+                    >
+                      {copied ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-dore" />
+                      )}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={shareLink}
+                      className="border-dore/30 hover:bg-dore/10"
+                    >
+                      <Share2 className="w-4 h-4 text-dore" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {isUnlocked ? (
             /* ========== UNLOCKED STATE - Beautiful Message Display ========== */
             <div className="space-y-6 animate-fade-in">
@@ -230,11 +307,15 @@ const ViewMessage = () => {
                 <CardContent className="p-8 space-y-6 text-center">
                   <div className="space-y-2">
                     <h1 className="font-serif text-2xl font-bold text-foreground">
-                      Un message spécial vous attend !
+                      {isCreator ? "Votre message est verrouillé" : "Un message spécial vous attend !"}
                     </h1>
                     <p className="text-muted-foreground">
-                      Bonjour <span className="font-medium text-foreground">{message.recipient_name}</span>,
-                      <br />un message vous est réservé.
+                      {isCreator ? (
+                        <>Ce message pour <span className="font-medium text-foreground">{message.recipient_name}</span> sera déverrouillé bientôt.</>
+                      ) : (
+                        <>Bonjour <span className="font-medium text-foreground">{message.recipient_name}</span>,
+                        <br />un message vous est réservé.</>
+                      )}
                     </p>
                   </div>
 
@@ -257,45 +338,60 @@ const ViewMessage = () => {
                     </p>
                   </div>
 
-                  <p className="text-muted-foreground italic">
-                    Patience... le meilleur arrive au bon moment 💕
-                  </p>
+                  {!isCreator && (
+                    <p className="text-muted-foreground italic">
+                      Patience... le meilleur arrive au bon moment 💕
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>
           )}
 
-          {/* ========== CTA Section - Viral Conversion ========== */}
-          <Card className="border-2 border-dashed border-dore/30 bg-gradient-to-b from-dore/5 to-transparent overflow-hidden">
-            <CardContent className="p-6 text-center space-y-4">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-dore/20">
-                <Send className="w-6 h-6 text-dore" />
-              </div>
-              
-              <div className="space-y-1">
-                <h3 className="font-serif text-lg font-semibold text-foreground">
-                  Vous aussi, surprenez vos proches
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Créez un message qui se déverrouillera au moment parfait
-                </p>
-              </div>
+          {/* ========== CTA Section - Only for non-creators ========== */}
+          {!isCreator && (
+            <Card className="border-2 border-dashed border-dore/30 bg-gradient-to-b from-dore/5 to-transparent overflow-hidden">
+              <CardContent className="p-6 text-center space-y-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-dore/20">
+                  <Send className="w-6 h-6 text-dore" />
+                </div>
+                
+                <div className="space-y-1">
+                  <h3 className="font-serif text-lg font-semibold text-foreground">
+                    Vous aussi, surprenez vos proches
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Créez un message qui se déverrouillera au moment parfait
+                  </p>
+                </div>
 
-              <Link to="/auth?mode=signup" className="block">
-                <Button 
-                  size="lg"
-                  className="w-full bg-dore hover:bg-dore-dark text-accent-foreground font-medium py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-                >
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  Créer mon message
+                <Link to="/auth?mode=signup" className="block">
+                  <Button 
+                    size="lg"
+                    className="w-full bg-dore hover:bg-dore-dark text-accent-foreground font-medium py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+                  >
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Créer mon message
+                  </Button>
+                </Link>
+
+                <p className="text-xs text-muted-foreground">
+                  Gratuit • 2 messages offerts à l'inscription
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Back to dashboard for creators */}
+          {isCreator && (
+            <div className="text-center">
+              <Link to="/dashboard">
+                <Button variant="outline" className="border-dore/30 text-dore hover:bg-dore/10">
+                  Retour au tableau de bord
                 </Button>
               </Link>
-
-              <p className="text-xs text-muted-foreground">
-                Gratuit • 2 messages offerts à l'inscription
-              </p>
-            </CardContent>
-          </Card>
+            </div>
+          )}
         </div>
       </main>
 
