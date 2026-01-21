@@ -25,13 +25,18 @@ const codeSchema = z.object({
     .regex(/^[A-Z0-9]+$/, "Le code ne peut contenir que des lettres majuscules et chiffres"),
   credits: z.number()
     .min(1, "Minimum 1 crédit")
-    .max(1000, "Maximum 1000 crédits")
+    .max(1000, "Maximum 1000 crédits"),
+  maxUses: z.number()
+    .min(1, "Minimum 1 utilisation")
+    .max(10000, "Maximum 10000 utilisations")
 });
 
 interface ActivationCode {
   id: string;
   code: string;
   credits: number;
+  max_uses: number;
+  current_uses: number;
   used_by: string | null;
   used_at: string | null;
   created_at: string;
@@ -66,6 +71,7 @@ const Admin = () => {
   // New code form
   const [newCode, setNewCode] = useState("");
   const [newCredits, setNewCredits] = useState(2);
+  const [newMaxUses, setNewMaxUses] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -124,16 +130,16 @@ const Admin = () => {
     // Count codes
     const { data: codesData } = await supabase
       .from("activation_codes")
-      .select("used_by");
+      .select("current_uses, max_uses");
 
     const totalCodes = codesData?.length ?? 0;
-    const usedCodes = codesData?.filter(c => c.used_by !== null).length ?? 0;
+    const fullyUsedCodes = codesData?.filter(c => c.current_uses >= c.max_uses).length ?? 0;
 
     setStats({
       totalUsers: userCount ?? 0,
       totalMessages: messageCount ?? 0,
       totalCodes,
-      usedCodes
+      usedCodes: fullyUsedCodes
     });
   };
 
@@ -141,7 +147,11 @@ const Admin = () => {
     const formattedCode = newCode.toUpperCase().trim();
     
     // Validate input
-    const validation = codeSchema.safeParse({ code: formattedCode, credits: newCredits });
+    const validation = codeSchema.safeParse({ 
+      code: formattedCode, 
+      credits: newCredits,
+      maxUses: newMaxUses
+    });
     if (!validation.success) {
       toast.error(validation.error.errors[0].message);
       return;
@@ -151,7 +161,12 @@ const Admin = () => {
 
     const { error } = await supabase
       .from("activation_codes")
-      .insert({ code: formattedCode, credits: newCredits });
+      .insert({ 
+        code: formattedCode, 
+        credits: newCredits,
+        max_uses: newMaxUses,
+        current_uses: 0
+      });
 
     if (error) {
       if (error.code === "23505") {
@@ -163,6 +178,7 @@ const Admin = () => {
       toast.success("Code créé avec succès");
       setNewCode("");
       setNewCredits(2);
+      setNewMaxUses(1);
       setIsDialogOpen(false);
       fetchCodes();
       fetchStats();
@@ -286,17 +302,34 @@ const Admin = () => {
                           Lettres majuscules et chiffres uniquement
                         </p>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="credits">Nombre de crédits</Label>
-                        <Input
-                          id="credits"
-                          type="number"
-                          min={1}
-                          max={1000}
-                          value={newCredits}
-                          onChange={(e) => setNewCredits(parseInt(e.target.value) || 1)}
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="credits">Crédits par personne</Label>
+                          <Input
+                            id="credits"
+                            type="number"
+                            min={1}
+                            max={1000}
+                            value={newCredits}
+                            onChange={(e) => setNewCredits(parseInt(e.target.value) || 1)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="maxUses">Nombre de personnes</Label>
+                          <Input
+                            id="maxUses"
+                            type="number"
+                            min={1}
+                            max={10000}
+                            value={newMaxUses}
+                            onChange={(e) => setNewMaxUses(parseInt(e.target.value) || 1)}
+                          />
+                        </div>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Ce code pourra être utilisé par {newMaxUses} personne{newMaxUses > 1 ? 's' : ''}, 
+                        chacune recevant {newCredits} crédit{newCredits > 1 ? 's' : ''}.
+                      </p>
                     </div>
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -314,12 +347,13 @@ const Admin = () => {
                 </Dialog>
               </div>
 
-              <Card className="border-border/50">
+              <Card className="border-border/50 overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Code</TableHead>
                       <TableHead>Crédits</TableHead>
+                      <TableHead>Utilisations</TableHead>
                       <TableHead>Statut</TableHead>
                       <TableHead>Créé le</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -328,50 +362,65 @@ const Admin = () => {
                   <TableBody>
                     {codes.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                           Aucun code d'activation
                         </TableCell>
                       </TableRow>
                     ) : (
-                      codes.map((code) => (
-                        <TableRow key={code.id}>
-                          <TableCell className="font-mono font-medium">{code.code}</TableCell>
-                          <TableCell>{code.credits}</TableCell>
-                          <TableCell>
-                            {code.used_by ? (
-                              <Badge variant="secondary">Utilisé</Badge>
-                            ) : (
-                              <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                                Disponible
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(code.created_at), "dd MMM yyyy", { locale: fr })}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => copyCode(code.code)}
-                              >
-                                <Copy className="w-4 h-4" />
-                              </Button>
-                              {!code.used_by && (
+                      codes.map((code) => {
+                        const isFullyUsed = code.current_uses >= code.max_uses;
+                        const hasUses = code.current_uses > 0;
+                        
+                        return (
+                          <TableRow key={code.id}>
+                            <TableCell className="font-mono font-medium">{code.code}</TableCell>
+                            <TableCell>{code.credits}</TableCell>
+                            <TableCell>
+                              <span className={hasUses ? "text-dore font-medium" : ""}>
+                                {code.current_uses}
+                              </span>
+                              <span className="text-muted-foreground">/{code.max_uses}</span>
+                            </TableCell>
+                            <TableCell>
+                              {isFullyUsed ? (
+                                <Badge variant="secondary">Épuisé</Badge>
+                              ) : hasUses ? (
+                                <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">
+                                  En cours
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                  Disponible
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {format(new Date(code.created_at), "dd MMM yyyy", { locale: fr })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
                                 <Button 
                                   variant="ghost" 
                                   size="icon"
-                                  onClick={() => handleDeleteCode(code.id)}
-                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => copyCode(code.code)}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Copy className="w-4 h-4" />
                                 </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                                {code.current_uses === 0 && (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    onClick={() => handleDeleteCode(code.id)}
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>

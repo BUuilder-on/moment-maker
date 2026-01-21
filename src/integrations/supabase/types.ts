@@ -19,8 +19,10 @@ export type Database = {
           code: string
           created_at: string
           credits: number
+          current_uses: number
           expires_at: string | null
           id: string
+          max_uses: number
           used_at: string | null
           used_by: string | null
         }
@@ -28,8 +30,10 @@ export type Database = {
           code: string
           created_at?: string
           credits?: number
+          current_uses?: number
           expires_at?: string | null
           id?: string
+          max_uses?: number
           used_at?: string | null
           used_by?: string | null
         }
@@ -37,12 +41,43 @@ export type Database = {
           code?: string
           created_at?: string
           credits?: number
+          current_uses?: number
           expires_at?: string | null
           id?: string
+          max_uses?: number
           used_at?: string | null
           used_by?: string | null
         }
         Relationships: []
+      }
+      code_usages: {
+        Row: {
+          code_id: string
+          id: string
+          used_at: string
+          user_id: string
+        }
+        Insert: {
+          code_id: string
+          id?: string
+          used_at?: string
+          user_id: string
+        }
+        Update: {
+          code_id?: string
+          id?: string
+          used_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "code_usages_code_id_fkey"
+            columns: ["code_id"]
+            isOneToOne: false
+            referencedRelation: "activation_codes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       messages: {
         Row: {

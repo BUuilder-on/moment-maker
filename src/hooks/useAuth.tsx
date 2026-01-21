@@ -98,16 +98,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signUp = async (email: string, password: string, activationCode: string) => {
-    // First validate the activation code
+    // First validate the activation code (check if uses are available)
     const { data: codeData, error: codeError } = await supabase
       .from("activation_codes")
       .select("*")
       .eq("code", activationCode.toUpperCase())
-      .is("used_by", null)
       .maybeSingle();
 
     if (codeError || !codeData) {
-      return { error: new Error("Code d'activation invalide ou déjà utilisé") };
+      return { error: new Error("Code d'activation invalide") };
+    }
+
+    // Check if code still has available uses
+    if (codeData.current_uses >= codeData.max_uses) {
+      return { error: new Error("Ce code d'activation a atteint sa limite d'utilisation") };
+    }
+
+    // Check expiration
+    if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) {
+      return { error: new Error("Ce code d'activation a expiré") };
     }
 
     const redirectUrl = `${window.location.origin}/`;
