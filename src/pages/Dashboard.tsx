@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Lock, Clock, CreditCard, LogOut, MessageSquare, Unlock } from "lucide-react";
+import { Plus, Lock, Clock, CreditCard, LogOut, MessageSquare, Unlock, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,7 +19,7 @@ interface Message {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, profile, signOut, isLoading } = useAuth();
+  const { user, profile, signOut, isLoading, isAdmin } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
 
@@ -74,6 +74,15 @@ const Dashboard = () => {
         <Logo to="/dashboard" />
         
         <div className="flex items-center gap-3">
+          {/* Admin Link */}
+          {isAdmin && (
+            <Link to="/admin">
+              <Button variant="ghost" size="icon" className="text-dore">
+                <Shield className="w-5 h-5" />
+              </Button>
+            </Link>
+          )}
+          
           {/* Credits Badge */}
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary border border-border/50">
             <CreditCard className="w-4 h-4 text-dore" />
