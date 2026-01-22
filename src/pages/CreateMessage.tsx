@@ -343,7 +343,11 @@ const CreateMessage = () => {
                             mode="single"
                             selected={formData.unlockDate}
                             onSelect={(date) => setFormData(prev => ({ ...prev, unlockDate: date }))}
-                            disabled={(date) => date < new Date()}
+                            disabled={(date) => {
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              return date < today;
+                            }}
                             initialFocus
                             className="p-3 pointer-events-auto"
                           />
