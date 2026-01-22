@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield } from "lucide-react";
+import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +19,7 @@ import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import Logo from "@/components/Logo";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 
 // Validation schema for activation code
 const codeSchema = z.object({
@@ -74,6 +78,17 @@ const Admin = () => {
   const [newMaxUses, setNewMaxUses] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Message creation form
+  const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false);
+  const [messageForm, setMessageForm] = useState({
+    recipientName: "",
+    recipientEmail: "",
+    message: "",
+    unlockDate: undefined as Date | undefined,
+    unlockTime: "",
+  });
+  const [generatedMessageLink, setGeneratedMessageLink] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && (!user || !isAdmin)) {
@@ -207,6 +222,60 @@ const Admin = () => {
     toast.success("Code copié !");
   };
 
+  const handleCreateMessage = async () => {
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
+    if (!messageForm.recipientName || !messageForm.message || !messageForm.unlockDate || !messageForm.unlockTime) {
+      toast.error("Veuillez remplir tous les champs obligatoires");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const [hours, minutes] = messageForm.unlockTime.split(':').map(Number);
+      const unlockAt = new Date(messageForm.unlockDate);
+      unlockAt.setHours(hours, minutes, 0, 0);
+
+      const { data: messageData, error: messageError } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: user.id,
+          recipient_name: messageForm.recipientName,
+          recipient_email: messageForm.recipientEmail || null,
+          content: messageForm.message,
+          unlock_at: unlockAt.toISOString(),
+        })
+        .select()
+        .single();
+
+      if (messageError) throw messageError;
+
+      const link = `${window.location.origin}/m/${messageData.id}`;
+      setGeneratedMessageLink(link);
+      toast.success("Message créé avec succès !");
+      fetchStats();
+    } catch (error: any) {
+      toast.error("Erreur: " + error.message);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const resetMessageForm = () => {
+    setMessageForm({
+      recipientName: "",
+      recipientEmail: "",
+      message: "",
+      unlockDate: undefined,
+      unlockTime: "",
+    });
+    setGeneratedMessageLink(null);
+  };
+
   if (isLoading || dataLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -264,9 +333,10 @@ const Admin = () => {
 
           {/* Tabs */}
           <Tabs defaultValue="codes" className="space-y-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="codes">Codes d'activation</TabsTrigger>
+            <TabsList className="grid w-full max-w-lg grid-cols-3">
+              <TabsTrigger value="codes">Codes</TabsTrigger>
               <TabsTrigger value="users">Utilisateurs</TabsTrigger>
+              <TabsTrigger value="messages">Créer message</TabsTrigger>
             </TabsList>
 
             {/* Codes Tab */}
@@ -466,6 +536,171 @@ const Admin = () => {
                     )}
                   </TableBody>
                 </Table>
+              </Card>
+            </TabsContent>
+
+            {/* Messages Tab - Admin Message Creation */}
+            <TabsContent value="messages" className="space-y-4">
+              <h2 className="font-serif text-xl font-semibold">Créer un message</h2>
+
+              <Card className="border-border/50">
+                <CardContent className="p-6">
+                  {generatedMessageLink ? (
+                    <div className="space-y-6 text-center">
+                      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                        <Send className="w-8 h-8 text-green-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-serif text-xl font-bold text-foreground mb-2">
+                          Message créé avec succès !
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Lien à partager avec {messageForm.recipientName}
+                        </p>
+                      </div>
+                      
+                      <div className="bg-secondary/50 rounded-lg p-4 flex items-center gap-3">
+                        <input 
+                          type="text" 
+                          value={generatedMessageLink} 
+                          readOnly 
+                          className="flex-1 bg-transparent text-sm text-foreground truncate"
+                        />
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedMessageLink);
+                            toast.success("Lien copié !");
+                          }}
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                      </div>
+
+                      <Button 
+                        onClick={() => {
+                          resetMessageForm();
+                          setIsMessageDialogOpen(false);
+                        }}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Créer un autre message
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="recipientName">Prénom du destinataire *</Label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                            <Input
+                              id="recipientName"
+                              placeholder="Prénom"
+                              value={messageForm.recipientName}
+                              onChange={(e) => setMessageForm(prev => ({ ...prev, recipientName: e.target.value }))}
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="recipientEmail">Email (optionnel)</Label>
+                          <Input
+                            id="recipientEmail"
+                            type="email"
+                            placeholder="email@exemple.com"
+                            value={messageForm.recipientEmail}
+                            onChange={(e) => setMessageForm(prev => ({ ...prev, recipientEmail: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="message">Message *</Label>
+                        <Textarea
+                          id="message"
+                          placeholder="Écrivez votre message ici..."
+                          value={messageForm.message}
+                          onChange={(e) => setMessageForm(prev => ({ ...prev, message: e.target.value }))}
+                          rows={4}
+                          className="resize-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Date de déverrouillage *</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !messageForm.unlockDate && "text-muted-foreground"
+                                )}
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {messageForm.unlockDate ? (
+                                  format(messageForm.unlockDate, "PPP", { locale: fr })
+                                ) : (
+                                  "Sélectionnez une date"
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <CalendarComponent
+                                mode="single"
+                                selected={messageForm.unlockDate}
+                                onSelect={(date) => setMessageForm(prev => ({ ...prev, unlockDate: date }))}
+                                disabled={(date) => {
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  return date < today;
+                                }}
+                                initialFocus
+                                className="p-3 pointer-events-auto"
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="unlockTime">Heure de déverrouillage *</Label>
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                            <Input
+                              id="unlockTime"
+                              type="time"
+                              value={messageForm.unlockTime}
+                              onChange={(e) => setMessageForm(prev => ({ ...prev, unlockTime: e.target.value }))}
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button 
+                        onClick={handleCreateMessage}
+                        disabled={isSubmitting || !messageForm.recipientName || !messageForm.message || !messageForm.unlockDate || !messageForm.unlockTime}
+                        className="w-full bg-dore hover:bg-dore-dark text-accent-foreground"
+                      >
+                        {isSubmitting ? (
+                          <span className="flex items-center gap-2">
+                            <span className="w-4 h-4 border-2 border-accent-foreground/30 border-t-accent-foreground rounded-full animate-spin" />
+                            Création...
+                          </span>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            Créer le message
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
