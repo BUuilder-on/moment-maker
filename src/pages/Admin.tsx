@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User } from "lucide-react";
+import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import Logo from "@/components/Logo";
+import AdminOrdersTab from "@/components/AdminOrdersTab";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 
@@ -332,12 +333,21 @@ const Admin = () => {
           </div>
 
           {/* Tabs */}
-          <Tabs defaultValue="codes" className="space-y-6">
-            <TabsList className="grid w-full max-w-lg grid-cols-3">
+          <Tabs defaultValue="orders" className="space-y-6">
+            <TabsList className="grid w-full max-w-2xl grid-cols-4">
+              <TabsTrigger value="orders" className="flex items-center gap-1">
+                <CreditCard className="w-4 h-4" />
+                Commandes
+              </TabsTrigger>
               <TabsTrigger value="codes">Codes</TabsTrigger>
               <TabsTrigger value="users">Utilisateurs</TabsTrigger>
               <TabsTrigger value="messages">Créer message</TabsTrigger>
             </TabsList>
+
+            {/* Orders Tab - NEW */}
+            <TabsContent value="orders">
+              <AdminOrdersTab />
+            </TabsContent>
 
             {/* Codes Tab */}
             <TabsContent value="codes" className="space-y-4">
