@@ -11,7 +11,6 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
-// Importation du client Supabase (Standard Lovable)
 import { supabase } from "@/integrations/supabase/client";
 
 declare global {
@@ -27,6 +26,7 @@ interface CreditPackage {
   popular?: boolean;
 }
 
+// Vos prix (j'ai vu que vous aviez modifié pour 200F, adaptez ici si besoin)
 const packages: CreditPackage[] = [
   { id: "basic", credits: 2, price: 200 },
   { id: "standard", credits: 5, price: 2000, popular: true },
@@ -47,17 +47,15 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
     setSelectedPackage(pkg);
   };
 
-  // Fonction pour ajouter les crédits dans Supabase
   const addCreditsToProfile = async (amount: number) => {
     try {
-      // 1. Récupérer l'utilisateur connecté
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        throw new Error("Vous devez être connecté pour acheter des crédits.");
+        toast({ title: "Erreur", description: "Utilisateur non connecté." });
+        return;
       }
 
-      // 2. Récupérer les crédits actuels
       const { data: profile, error: fetchError } = await supabase
         .from('profiles')
         .select('credits')
@@ -69,7 +67,6 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
       const currentCredits = profile?.credits || 0;
       const newTotal = currentCredits + amount;
 
-      // 3. Mettre à jour avec les nouveaux crédits
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ credits: newTotal })
@@ -77,26 +74,28 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
 
       if (updateError) throw updateError;
 
-      // Succès total
       toast({
         title: "Paiement réussi !",
         description: `${amount} crédits ont été ajoutés à votre compte.`,
       });
-      
-      handleClose();
 
     } catch (error) {
       console.error("Erreur lors de l'ajout des crédits:", error);
       toast({
         variant: "destructive",
         title: "Erreur technique",
-        description: "Le paiement est validé mais l'ajout des crédits a échoué. Contactez le support.",
+        description: "Paiement validé mais erreur d'ajout de crédits. Contactez le support.",
       });
     }
   };
 
   const handleFedaPayPayment = () => {
     if (!selectedPackage) return;
+    
+    // IMPORTANT : On sauvegarde les valeurs ici car le tiroir va se fermer
+    const pkgPrice = selectedPackage.price;
+    const pkgCredits = selectedPackage.credits;
+
     setLoading(true);
 
     try {
@@ -113,27 +112,35 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
       const widget = window.FedaPay.init({
         public_key: 'pk_live_9lrQHqfgvn-UBrscJ0BzOR9O',
         transaction: {
-          amount: selectedPackage.price,
-          description: `Achat pack ${selectedPackage.credits} crédits`,
+          amount: pkgPrice,
+          description: `Achat pack ${pkgCredits} crédits`,
         },
         customer: {
-          email: 'client@alheurejuste.com', // Idéalement : user.email si accessible ici
+          email: 'client@alheurejuste.com', 
           lastname: 'Client',
         },
         onComplete: (resp: any) => {
           const status = resp.reason;
           if (status === window.FedaPay.CHECKOUT_COMPLETE) {
-            // Si le paiement est bon, on ajoute les crédits
             console.log("Paiement validé par FedaPay");
-            addCreditsToProfile(selectedPackage.credits);
+            // On utilise la variable locale 'pkgCredits' qui ne disparaît pas
+            addCreditsToProfile(pkgCredits);
           } else {
             console.log("Paiement annulé");
-            setLoading(false);
+            // Optionnel : Vous pourriez rouvrir le tiroir ici si vous voulez
           }
+          setLoading(false);
         }
       });
 
-      widget.open();
+      // CORRECTION DU BUG : On ferme le tiroir AVANT d'ouvrir FedaPay
+      // Cela désactive le blocage (focus trap) et rend FedaPay cliquable
+      onOpenChange(false);
+
+      // On attend un tout petit peu (500ms) que le tiroir disparaisse, puis on ouvre FedaPay
+      setTimeout(() => {
+        widget.open();
+      }, 500);
 
     } catch (error) {
       console.error(error);
@@ -156,7 +163,7 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
             Obtenir des crédits
           </DrawerTitle>
           <DrawerDescription>
-            Choisissez votre pack pour recharger votre compte immédiatement
+            Rechargez votre compte immédiatement
           </DrawerDescription>
         </DrawerHeader>
 
@@ -219,12 +226,12 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
                 ) : (
                   <Smartphone className="w-5 h-5 mr-2" />
                 )}
-                {loading ? "Validation en cours..." : "Payer et recharger"}
+                {loading ? "Chargement..." : "Payer maintenant"}
               </Button>
             </div>
             
             <p className="text-xs text-center text-muted-foreground mt-2">
-              Le rechargement est automatique après validation du paiement.
+              Le menu se fermera automatiquement pour vous laisser payer.
             </p>
           </div>
         </div>
