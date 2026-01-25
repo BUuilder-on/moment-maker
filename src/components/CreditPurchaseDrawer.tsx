@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { CreditCard, Smartphone, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +11,9 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
+// Importation du client Supabase (Standard Lovable)
+import { supabase } from "@/integrations/supabase/client";
 
-// Déclaration pour que TypeScript reconnaisse FedaPay
 declare global {
   interface Window {
     FedaPay: any;
@@ -46,63 +47,96 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
     setSelectedPackage(pkg);
   };
 
+  // Fonction pour ajouter les crédits dans Supabase
+  const addCreditsToProfile = async (amount: number) => {
+    try {
+      // 1. Récupérer l'utilisateur connecté
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("Vous devez être connecté pour acheter des crédits.");
+      }
+
+      // 2. Récupérer les crédits actuels
+      const { data: profile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', user.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentCredits = profile?.credits || 0;
+      const newTotal = currentCredits + amount;
+
+      // 3. Mettre à jour avec les nouveaux crédits
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: newTotal })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      // Succès total
+      toast({
+        title: "Paiement réussi !",
+        description: `${amount} crédits ont été ajoutés à votre compte.`,
+      });
+      
+      handleClose();
+
+    } catch (error) {
+      console.error("Erreur lors de l'ajout des crédits:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur technique",
+        description: "Le paiement est validé mais l'ajout des crédits a échoué. Contactez le support.",
+      });
+    }
+  };
+
   const handleFedaPayPayment = () => {
     if (!selectedPackage) return;
-    
     setLoading(true);
 
     try {
-      // Vérification que le script FedaPay est bien chargé
       if (typeof window.FedaPay === 'undefined') {
         toast({
           variant: "destructive",
-          title: "Erreur de chargement",
-          description: "Le système de paiement n'est pas prêt. Rechargez la page.",
+          title: "Erreur",
+          description: "Système de paiement non chargé. Rechargez la page.",
         });
         setLoading(false);
         return;
       }
 
-      // Configuration du widget FedaPay
       const widget = window.FedaPay.init({
-        public_key: 'pk_live_9lrQHqfgvn-UBrscJ0BzOR9O', // Votre clé publique (SÉCURISÉ)
+        public_key: 'pk_live_9lrQHqfgvn-UBrscJ0BzOR9O',
         transaction: {
           amount: selectedPackage.price,
-          description: `Achat de ${selectedPackage.credits} crédits`,
+          description: `Achat pack ${selectedPackage.credits} crédits`,
         },
         customer: {
-          email: 'client@alheurejuste.com', // Idéalement, mettez l'email du client connecté ici
-          lastname: 'Client', // Idéalement, nom du client
+          email: 'client@alheurejuste.com', // Idéalement : user.email si accessible ici
+          lastname: 'Client',
         },
         onComplete: (resp: any) => {
-          // Ce code s'exécute quand le paiement est terminé ou fermé
-          const status = resp.reason; // 'CHECKOUT_COMPLETE' si succès
-          
+          const status = resp.reason;
           if (status === window.FedaPay.CHECKOUT_COMPLETE) {
-             console.log("Paiement réussi", resp);
-             toast({
-              title: "Paiement réussi !",
-              description: `Vos ${selectedPackage.credits} crédits ont été ajoutés.`,
-              // Note: Pour une vraie sécurité, les crédits doivent être ajoutés via un Webhook backend
-            });
-            handleClose();
+            // Si le paiement est bon, on ajoute les crédits
+            console.log("Paiement validé par FedaPay");
+            addCreditsToProfile(selectedPackage.credits);
           } else {
-             console.log("Paiement annulé ou échoué");
+            console.log("Paiement annulé");
+            setLoading(false);
           }
-          setLoading(false);
         }
       });
 
-      // Ouvrir la fenêtre de paiement
       widget.open();
 
     } catch (error) {
-      console.error("Erreur FedaPay:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Une erreur est survenue lors de l'initialisation du paiement.",
-      });
+      console.error(error);
       setLoading(false);
     }
   };
@@ -122,73 +156,77 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
             Obtenir des crédits
           </DrawerTitle>
           <DrawerDescription>
-            Choisissez votre pack et payez directement par Mobile Money
+            Choisissez votre pack pour recharger votre compte immédiatement
           </DrawerDescription>
         </DrawerHeader>
 
         <div className="px-4 pb-4">
-            <div className="space-y-3">
-              {packages.map((pkg) => (
-                <button
-                  key={pkg.id}
-                  onClick={() => handleSelectPackage(pkg)}
-                  className={`w-full p-4 rounded-xl border-2 transition-all relative ${
-                    selectedPackage?.id === pkg.id
-                      ? "border-dore bg-dore/10"
-                      : "border-border hover:border-dore/50 bg-card"
-                  }`}
-                >
-                  {pkg.popular && (
-                    <span className="absolute -top-2 right-3 px-2 py-0.5 bg-dore text-black text-xs font-medium rounded-full">
-                      Populaire
-                    </span>
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        selectedPackage?.id === pkg.id ? "bg-dore/20" : "bg-secondary"
-                      }`}>
-                        {selectedPackage?.id === pkg.id ? (
-                          <Check className="w-5 h-5 text-dore" />
-                        ) : (
-                          <CreditCard className="w-5 h-5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="text-left">
-                        <p className="font-semibold text-foreground">
-                          {pkg.credits} crédits
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {Math.round(pkg.price / pkg.credits)} FCFA / crédit
-                        </p>
-                      </div>
+          <div className="space-y-3">
+            {packages.map((pkg) => (
+              <button
+                key={pkg.id}
+                onClick={() => handleSelectPackage(pkg)}
+                className={`w-full p-4 rounded-xl border-2 transition-all relative ${
+                  selectedPackage?.id === pkg.id
+                    ? "border-dore bg-dore/10"
+                    : "border-border hover:border-dore/50 bg-card"
+                }`}
+              >
+                {pkg.popular && (
+                  <span className="absolute -top-2 right-3 px-2 py-0.5 bg-dore text-black text-xs font-medium rounded-full">
+                    Populaire
+                  </span>
+                )}
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      selectedPackage?.id === pkg.id ? "bg-dore/20" : "bg-secondary"
+                    }`}>
+                      {selectedPackage?.id === pkg.id ? (
+                        <Check className="w-5 h-5 text-dore" />
+                      ) : (
+                        <CreditCard className="w-5 h-5 text-muted-foreground" />
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-dore">
-                        {pkg.price.toLocaleString()}
+                    <div className="text-left">
+                      <p className="font-semibold text-foreground">
+                        {pkg.credits} crédits
                       </p>
-                      <p className="text-sm text-muted-foreground">FCFA</p>
+                      <p className="text-sm text-muted-foreground">
+                        {Math.round(pkg.price / pkg.credits)} FCFA / crédit
+                      </p>
                     </div>
                   </div>
-                </button>
-              ))}
+                  <div className="text-right">
+                    <p className="text-xl font-bold text-dore">
+                      {pkg.price.toLocaleString()}
+                    </p>
+                    <p className="text-sm text-muted-foreground">FCFA</p>
+                  </div>
+                </div>
+              </button>
+            ))}
 
-              <div className="pt-4">
-                <Button
-                  onClick={handleFedaPayPayment}
-                  disabled={!selectedPackage || loading}
-                  className="w-full bg-dore hover:bg-dore/90 text-black font-medium py-6"
-                >
-                  {loading ? (
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  ) : (
-                    <Smartphone className="w-5 h-5 mr-2" />
-                  )}
-                  {loading ? "Chargement..." : "Payer maintenant"}
-                </Button>
-              </div>
+            <div className="pt-4">
+              <Button
+                onClick={handleFedaPayPayment}
+                disabled={!selectedPackage || loading}
+                className="w-full bg-dore hover:bg-dore/90 text-black font-medium py-6"
+              >
+                {loading ? (
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <Smartphone className="w-5 h-5 mr-2" />
+                )}
+                {loading ? "Validation en cours..." : "Payer et recharger"}
+              </Button>
             </div>
+            
+            <p className="text-xs text-center text-muted-foreground mt-2">
+              Le rechargement est automatique après validation du paiement.
+            </p>
+          </div>
         </div>
 
         <DrawerFooter>
