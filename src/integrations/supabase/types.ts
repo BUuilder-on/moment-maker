@@ -79,6 +79,48 @@ export type Database = {
           },
         ]
       }
+      credit_orders: {
+        Row: {
+          amount: number
+          created_at: string
+          credits: number
+          id: string
+          notes: string | null
+          payment_method: string | null
+          status: string
+          user_email: string
+          user_id: string
+          validated_at: string | null
+          validated_by: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          credits: number
+          id?: string
+          notes?: string | null
+          payment_method?: string | null
+          status?: string
+          user_email: string
+          user_id: string
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          credits?: number
+          id?: string
+          notes?: string | null
+          payment_method?: string | null
+          status?: string
+          user_email?: string
+          user_id?: string
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           content: string
