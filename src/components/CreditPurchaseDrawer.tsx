@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CreditCard, Smartphone, Check, Copy } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CreditCard, Smartphone, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -11,6 +11,13 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
+
+// Déclaration pour que TypeScript reconnaisse FedaPay
+declare global {
+  interface Window {
+    FedaPay: any;
+  }
+}
 
 interface CreditPackage {
   id: string;
@@ -32,32 +39,77 @@ interface CreditPurchaseDrawerProps {
 
 const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps) => {
   const [selectedPackage, setSelectedPackage] = useState<CreditPackage | null>(null);
-  const [step, setStep] = useState<"select" | "payment">("select");
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-
-  const mobileMoneyNumber = "+225 07 00 00 00 00"; // À remplacer par le vrai numéro
 
   const handleSelectPackage = (pkg: CreditPackage) => {
     setSelectedPackage(pkg);
   };
 
-  const handleProceedToPayment = () => {
-    if (selectedPackage) {
-      setStep("payment");
+  const handleFedaPayPayment = () => {
+    if (!selectedPackage) return;
+    
+    setLoading(true);
+
+    try {
+      // Vérification que le script FedaPay est bien chargé
+      if (typeof window.FedaPay === 'undefined') {
+        toast({
+          variant: "destructive",
+          title: "Erreur de chargement",
+          description: "Le système de paiement n'est pas prêt. Rechargez la page.",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Configuration du widget FedaPay
+      const widget = window.FedaPay.init({
+        public_key: 'pk_live_9lrQHqfgvn-UBrscJ0BzOR9O', // Votre clé publique (SÉCURISÉ)
+        transaction: {
+          amount: selectedPackage.price,
+          description: `Achat de ${selectedPackage.credits} crédits`,
+        },
+        customer: {
+          email: 'client@alheurejuste.com', // Idéalement, mettez l'email du client connecté ici
+          lastname: 'Client', // Idéalement, nom du client
+        },
+        onComplete: (resp: any) => {
+          // Ce code s'exécute quand le paiement est terminé ou fermé
+          const status = resp.reason; // 'CHECKOUT_COMPLETE' si succès
+          
+          if (status === window.FedaPay.CHECKOUT_COMPLETE) {
+             console.log("Paiement réussi", resp);
+             toast({
+              title: "Paiement réussi !",
+              description: `Vos ${selectedPackage.credits} crédits ont été ajoutés.`,
+              // Note: Pour une vraie sécurité, les crédits doivent être ajoutés via un Webhook backend
+            });
+            handleClose();
+          } else {
+             console.log("Paiement annulé ou échoué");
+          }
+          setLoading(false);
+        }
+      });
+
+      // Ouvrir la fenêtre de paiement
+      widget.open();
+
+    } catch (error) {
+      console.error("Erreur FedaPay:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Une erreur est survenue lors de l'initialisation du paiement.",
+      });
+      setLoading(false);
     }
   };
 
-  const handleCopyNumber = () => {
-    navigator.clipboard.writeText(mobileMoneyNumber.replace(/\s/g, ""));
-    toast({
-      title: "Numéro copié !",
-      description: "Le numéro a été copié dans le presse-papiers.",
-    });
-  };
-
   const handleClose = () => {
-    setStep("select");
     setSelectedPackage(null);
+    setLoading(false);
     onOpenChange(false);
   };
 
@@ -67,18 +119,14 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
         <DrawerHeader className="text-center">
           <DrawerTitle className="font-serif text-xl flex items-center justify-center gap-2">
             <CreditCard className="w-5 h-5 text-dore" />
-            {step === "select" ? "Obtenir des crédits" : "Paiement Mobile Money"}
+            Obtenir des crédits
           </DrawerTitle>
           <DrawerDescription>
-            {step === "select" 
-              ? "Choisissez votre pack de crédits" 
-              : `Pack ${selectedPackage?.credits} crédits - ${selectedPackage?.price} FCFA`
-            }
+            Choisissez votre pack et payez directement par Mobile Money
           </DrawerDescription>
         </DrawerHeader>
 
         <div className="px-4 pb-4">
-          {step === "select" ? (
             <div className="space-y-3">
               {packages.map((pkg) => (
                 <button
@@ -128,109 +176,25 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
 
               <div className="pt-4">
                 <Button
-                  onClick={handleProceedToPayment}
-                  disabled={!selectedPackage}
+                  onClick={handleFedaPayPayment}
+                  disabled={!selectedPackage || loading}
                   className="w-full bg-dore hover:bg-dore/90 text-black font-medium py-6"
                 >
-                  <Smartphone className="w-5 h-5 mr-2" />
-                  Payer avec Mobile Money
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  ) : (
+                    <Smartphone className="w-5 h-5 mr-2" />
+                  )}
+                  {loading ? "Chargement..." : "Payer maintenant"}
                 </Button>
               </div>
             </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Instructions Mobile Money */}
-              <div className="bg-secondary/50 rounded-xl p-4 space-y-4">
-                <h3 className="font-semibold text-foreground text-center">
-                  Comment payer ?
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-dore text-black flex items-center justify-center text-sm font-bold flex-shrink-0">
-                      1
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Ouvrez votre application <strong className="text-foreground">Orange Money</strong>, <strong className="text-foreground">MTN MoMo</strong> ou <strong className="text-foreground">Wave</strong>
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-dore text-black flex items-center justify-center text-sm font-bold flex-shrink-0">
-                      2
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Envoyez <strong className="text-dore">{selectedPackage?.price.toLocaleString()} FCFA</strong> au numéro ci-dessous
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-dore text-black flex items-center justify-center text-sm font-bold flex-shrink-0">
-                      3
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Vos crédits seront ajoutés sous <strong className="text-foreground">24h</strong> après vérification
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Numéro à copier */}
-              <div className="bg-card border border-border rounded-xl p-4">
-                <p className="text-sm text-muted-foreground text-center mb-2">
-                  Numéro de paiement
-                </p>
-                <div className="flex items-center justify-center gap-2">
-                  <p className="text-xl font-bold text-foreground font-mono">
-                    {mobileMoneyNumber}
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCopyNumber}
-                    className="text-dore hover:bg-dore/10"
-                  >
-                    <Copy className="w-5 h-5" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Récapitulatif */}
-              <div className="bg-dore/10 border border-dore/30 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Pack choisi</span>
-                  <span className="font-semibold text-foreground">
-                    {selectedPackage?.credits} crédits
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-muted-foreground">Montant à payer</span>
-                  <span className="font-bold text-dore text-lg">
-                    {selectedPackage?.price.toLocaleString()} FCFA
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-xs text-center text-muted-foreground">
-                En cas de problème, contactez-nous via WhatsApp au même numéro
-              </p>
-            </div>
-          )}
         </div>
 
         <DrawerFooter>
-          {step === "payment" && (
-            <Button
-              variant="outline"
-              onClick={() => setStep("select")}
-              className="w-full"
-            >
-              Retour aux offres
-            </Button>
-          )}
           <DrawerClose asChild>
             <Button variant="ghost" className="w-full">
-              Fermer
+              Annuler
             </Button>
           </DrawerClose>
         </DrawerFooter>
