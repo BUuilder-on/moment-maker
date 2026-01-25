@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import Logo from "@/components/Logo";
-
+import CreditPurchaseDrawer from "@/components/CreditPurchaseDrawer";
 interface Message {
   id: string;
   recipient_name: string;
@@ -22,6 +22,7 @@ const Dashboard = () => {
   const { user, profile, signOut, isLoading, isAdmin } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
+  const [creditDrawerOpen, setCreditDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -180,12 +181,18 @@ const Dashboard = () => {
               <Button 
                 variant="outline" 
                 className="w-full border-dore/30 text-dore hover:bg-dore/10"
+                onClick={() => setCreditDrawerOpen(true)}
               >
                 Obtenir plus de crédits
               </Button>
             </CardContent>
           </Card>
         </div>
+
+        <CreditPurchaseDrawer 
+          open={creditDrawerOpen} 
+          onOpenChange={setCreditDrawerOpen} 
+        />
       </main>
     </div>
   );
