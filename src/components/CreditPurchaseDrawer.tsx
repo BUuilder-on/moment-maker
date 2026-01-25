@@ -12,12 +12,7 @@ import {
 } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-
-declare global {
-  interface Window {
-    FedaPay: any;
-  }
-}
+import "@/types/fedapay.d";
 
 interface CreditPackage {
   id: string;
