@@ -21,7 +21,7 @@ interface CreditPackage {
   popular?: boolean;
 }
 
-// Vos prix (j'ai vu que vous aviez modifié pour 200F, adaptez ici si besoin)
+// Vos prix
 const packages: CreditPackage[] = [
   { id: "basic", credits: 2, price: 200 },
   { id: "standard", credits: 5, price: 2000, popular: true },
@@ -88,6 +88,7 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
     if (!selectedPackage) return;
     
     // IMPORTANT : On sauvegarde les valeurs ici car le tiroir va se fermer
+    // Cela empêche de perdre les infos quand le composant est démonté/caché
     const pkgPrice = selectedPackage.price;
     const pkgCredits = selectedPackage.credits;
 
@@ -118,18 +119,19 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
           const status = resp.reason;
           if (status === window.FedaPay.CHECKOUT_COMPLETE) {
             console.log("Paiement validé par FedaPay");
-            // On utilise la variable locale 'pkgCredits' qui ne disparaît pas
+            // Succès : On ajoute les crédits (la variable pkgCredits est toujours accessible ici)
             addCreditsToProfile(pkgCredits);
           } else {
-            console.log("Paiement annulé");
-            // Optionnel : Vous pourriez rouvrir le tiroir ici si vous voulez
+            console.log("Paiement annulé ou fermé");
+            // ÉTAPE 2 (Modification appliquée) :
+            // Si l'utilisateur annule, on ROUVRE le tiroir pour qu'il puisse réessayer
+            onOpenChange(true);
           }
           setLoading(false);
         }
       });
 
-      // CORRECTION DU BUG : On ferme le tiroir AVANT d'ouvrir FedaPay
-      // Cela désactive le blocage (focus trap) et rend FedaPay cliquable
+      // On ferme le tiroir AVANT d'ouvrir FedaPay pour éviter le blocage (focus trap)
       onOpenChange(false);
 
       // On attend un tout petit peu (500ms) que le tiroir disparaisse, puis on ouvre FedaPay
@@ -140,6 +142,8 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
     } catch (error) {
       console.error(error);
       setLoading(false);
+      // En cas d'erreur technique immédiate, on rouvre le tiroir
+      onOpenChange(true);
     }
   };
 
