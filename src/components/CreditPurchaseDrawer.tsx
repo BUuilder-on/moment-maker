@@ -23,7 +23,7 @@ interface CreditPackage {
 
 // Vos prix
 const packages: CreditPackage[] = [
-  { id: "basic", credits: 2, price: 200 },
+  { id: "basic", credits: 2, price: 500 },
   { id: "standard", credits: 5, price: 2000, popular: true },
   { id: "premium", credits: 20, price: 5000 },
 ];
@@ -104,14 +104,24 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
           console.log("Statut FedaPay:", status);
           
           if (status === window.FedaPay.CHECKOUT_COMPLETE) {
-            // Payment completed - webhook will handle credit addition
             toast({
               title: "Paiement en cours de validation",
               description: "Vos crédits seront ajoutés automatiquement dans quelques instants.",
             });
             onOpenChange(false);
+          } else if (status === window.FedaPay.CHECKOUT_CANCELED) {
+            toast({
+              title: "Paiement annulé",
+              description: "La transaction a été annulée. Vérifiez votre solde Mobile Money et réessayez.",
+              variant: "destructive",
+            });
+            onOpenChange(true);
           } else {
-            console.log("Paiement non complété : " + status);
+            toast({
+              title: "Paiement non finalisé",
+              description: "Veuillez réessayer ou contacter le support si le problème persiste.",
+              variant: "destructive",
+            });
             onOpenChange(true);
           }
           setLoading(false);
@@ -215,7 +225,7 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
             </div>
             
             <p className="text-xs text-center text-muted-foreground mt-2">
-              Le menu se fermera automatiquement pour vous laisser payer.
+              Assurez-vous d'avoir suffisamment de crédit Mobile Money. Confirmez le paiement sur votre téléphone dans les 2 minutes.
             </p>
           </div>
         </div>

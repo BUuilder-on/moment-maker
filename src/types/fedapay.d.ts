@@ -19,6 +19,7 @@ declare global {
         open: () => void;
       };
       CHECKOUT_COMPLETE: string;
+      CHECKOUT_CANCELED: string;
     };
   }
 }
