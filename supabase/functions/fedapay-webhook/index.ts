@@ -67,23 +67,58 @@ Deno.serve(async (req) => {
       "transaction.successful",
     ];
 
-    if (!successEvents.includes(eventName)) {
-      console.log("Event not a success event, ignoring:", eventName);
-      return new Response(JSON.stringify({ received: true, action: "ignored" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Check if this is a canceled/declined event
+    const cancelEvents = [
+      "transaction.canceled",
+      "transaction.declined",
+      "transaction.refunded",
+    ];
 
     // Get the transaction ID and custom_id (order ID)
     const transactionId = transaction?.id?.toString();
     const orderId = transaction?.custom_id || transaction?.reference;
     const amount = transaction?.amount;
     const status = transaction?.status;
+    const errorCode = transaction?.last_error_code;
 
     console.log("Transaction ID:", transactionId);
     console.log("Order ID:", orderId);
     console.log("Amount:", amount);
     console.log("Status:", status);
+    console.log("Error Code:", errorCode);
+
+    // Handle canceled/declined events
+    if (cancelEvents.includes(eventName)) {
+      console.log("Transaction canceled/declined:", eventName);
+      
+      if (orderId) {
+        const { error: updateError } = await supabase
+          .from("credit_orders")
+          .update({
+            status: "rejected",
+            notes: `Annulée automatiquement via webhook: ${errorCode || eventName}`,
+          })
+          .eq("id", orderId)
+          .eq("status", "pending");
+
+        if (updateError) {
+          console.error("Failed to update canceled order:", updateError);
+        } else {
+          console.log("Order marked as rejected:", orderId);
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true, action: "order_canceled" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!successEvents.includes(eventName)) {
+      console.log("Event not a success event, ignoring:", eventName);
+      return new Response(JSON.stringify({ received: true, action: "ignored" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!orderId) {
       console.error("No order ID found in transaction");
