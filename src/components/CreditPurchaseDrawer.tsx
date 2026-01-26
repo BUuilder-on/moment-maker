@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/drawer";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import "@/types/fedapay.d";
+import "@/types/fedapay.d.ts";
 
 interface CreditPackage {
   id: string;
@@ -42,57 +42,7 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
     setSelectedPackage(pkg);
   };
 
-  const addCreditsToProfile = async (amount: number) => {
-    try {
-      console.log("Tentative d'ajout de crédits...");
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        alert("ERREUR : Vous n'êtes pas connecté !");
-        return;
-      }
-
-      // 1. On récupère le profil
-      const { data: profile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('id', user.id)
-        .single();
-
-      if (fetchError) {
-        alert("ERREUR SUPABASE (Lecture) : " + fetchError.message);
-        throw fetchError;
-      }
-
-      const currentCredits = profile?.credits || 0;
-      const newTotal = currentCredits + amount;
-
-      // 2. On met à jour
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ credits: newTotal })
-        .eq('id', user.id);
-
-      if (updateError) {
-        alert("ERREUR SUPABASE (Écriture) : " + updateError.message + "\n\nAVEZ-VOUS LANCÉ LE SQL ?");
-        throw updateError;
-      }
-
-      // SUCCÈS
-      alert(`SUCCÈS ! ${amount} crédits ajoutés. Nouveau total : ${newTotal}`);
-      toast({
-        title: "Paiement réussi !",
-        description: `${amount} crédits ont été ajoutés à votre compte.`,
-      });
-
-    } catch (error: any) {
-      console.error("Erreur critique:", error);
-      // On rouvre le tiroir en cas d'erreur pour ne pas bloquer l'user
-      onOpenChange(true);
-    }
-  };
-
-  const handleFedaPayPayment = () => {
+  const handleFedaPayPayment = async () => {
     if (!selectedPackage) return;
     
     const pkgPrice = selectedPackage.price;
@@ -107,33 +57,68 @@ const CreditPurchaseDrawer = ({ open, onOpenChange }: CreditPurchaseDrawerProps)
         return;
       }
 
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert("Vous devez être connecté pour effectuer un paiement");
+        setLoading(false);
+        return;
+      }
+
+      // Create a pending order first
+      const { data: order, error: orderError } = await supabase
+        .from('credit_orders')
+        .insert({
+          user_id: user.id,
+          user_email: user.email || '',
+          credits: pkgCredits,
+          amount: pkgPrice,
+          status: 'pending',
+          payment_method: 'fedapay',
+        })
+        .select()
+        .single();
+
+      if (orderError || !order) {
+        console.error("Erreur création commande:", orderError);
+        alert("Erreur lors de la création de la commande");
+        setLoading(false);
+        return;
+      }
+
+      console.log("Commande créée:", order.id);
+
       const widget = window.FedaPay.init({
         public_key: 'pk_live_9lrQHqfgvn-UBrscJ0BzOR9O',
         transaction: {
           amount: pkgPrice,
           description: `Achat pack ${pkgCredits} crédits`,
+          custom_id: order.id, // Pass order ID for webhook
         },
         customer: {
-          email: 'client@alheurejuste.com', 
-          lastname: 'Client',
+          email: user.email || 'client@alheurejuste.com', 
+          lastname: user.email?.split('@')[0] || 'Client',
         },
         onComplete: (resp: any) => {
           const status = resp.reason;
           console.log("Statut FedaPay:", status);
           
           if (status === window.FedaPay.CHECKOUT_COMPLETE) {
-            // PAIEMENT OK -> On lance l'ajout
-            addCreditsToProfile(pkgCredits);
+            // Payment completed - webhook will handle credit addition
+            toast({
+              title: "Paiement en cours de validation",
+              description: "Vos crédits seront ajoutés automatiquement dans quelques instants.",
+            });
+            onOpenChange(false);
           } else {
             console.log("Paiement non complété : " + status);
-            // On ne met pas d'alerte ici car l'utilisateur a peut-être juste fermé la fenêtre
             onOpenChange(true);
           }
           setLoading(false);
         }
       });
 
-      // On ferme le tiroir pour laisser la place au popup
+      // Close drawer to show FedaPay popup
       onOpenChange(false);
 
       setTimeout(() => {
