@@ -6,6 +6,7 @@ declare global {
         transaction: {
           amount: number;
           description: string;
+          custom_id?: string;
         };
         customer: {
           email: string;
