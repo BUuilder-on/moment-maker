@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mail, KeyRound, ArrowRight, Eye, EyeOff, Ticket } from "lucide-react";
+import { Mail, KeyRound, ArrowRight, Eye, EyeOff, Ticket, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -240,6 +240,19 @@ const Auth = () => {
                   </button>
                 </p>
               )}
+            </div>
+
+            {/* Contact Support */}
+            <div className="mt-4 text-center">
+              <a
+                href="https://t.me/josuesourcing"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-dore transition-colors"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Contacter le support
+              </a>
             </div>
           </CardContent>
         </Card>
