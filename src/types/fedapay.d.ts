@@ -1,25 +1,20 @@
 declare global {
   interface Window {
     FedaPay: {
-      init: (config: {
-        public_key: string;
-        transaction: {
-          amount: number;
-          description: string;
-          custom_id?: string;
-        };
-        customer: {
-          email: string;
-          lastname: string;
-        };
-        onComplete: (response: {
-          reason: string;
-        }) => void;
-      }) => {
-        open: () => void;
-      };
-      CHECKOUT_COMPLETE: string;
-      CHECKOUT_CANCELED: string;
+      init: (
+        selector: string,
+        config: {
+          public_key: string;
+          environment?: 'sandbox' | 'live';
+          onComplete?: (reason: string, transaction?: any) => void;
+        }
+      ) => void;
+      // Alternative: init with inline config (for programmatic usage)
+      CHECKOUT_COMPLETED: string;
+      DIALOG_DISMISSED: string;
+      // Legacy constants (kept for backwards compatibility)
+      CHECKOUT_COMPLETE?: string;
+      CHECKOUT_CANCELED?: string;
     };
   }
 }
