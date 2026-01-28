@@ -22,7 +22,7 @@ interface CreditPackage {
 }
 
 const packages: CreditPackage[] = [
-  { id: "basic", credits: 2, price: 200 },
+  { id: "basic", credits: 2, price: 500 },
   { id: "standard", credits: 5, price: 2000, popular: true },
   { id: "premium", credits: 20, price: 5000 },
 ];
