@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User, CreditCard, Pencil } from "lucide-react";
+import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User, CreditCard, Pencil, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,10 +30,10 @@ const codeSchema = z.object({
     .regex(/^[A-Z0-9]+$/, "Le code ne peut contenir que des lettres majuscules et chiffres"),
   credits: z.number()
     .min(1, "Minimum 1 crédit")
-    .max(1000000, "Maximum 1 000 000 crédits"),
+    .max(1000, "Maximum 1000 crédits"),
   maxUses: z.number()
     .min(1, "Minimum 1 utilisation")
-    .max(10000, "Maximum 10000 utilisations")
+    .max(100000, "Maximum 100 000 utilisations")
 });
 
 interface ActivationCode {
@@ -244,13 +244,13 @@ const Admin = () => {
       return;
     }
 
-    if (editCredits < 1 || editCredits > 1000000) {
-      toast.error("Les crédits doivent être entre 1 et 1 000 000");
+    if (editCredits < 1 || editCredits > 1000) {
+      toast.error("Les crédits doivent être entre 1 et 1000");
       return;
     }
 
-    if (editMaxUses < 1 || editMaxUses > 10000) {
-      toast.error("Le nombre d'utilisations doit être entre 1 et 10000");
+    if (editMaxUses < 1 || editMaxUses > 100000) {
+      toast.error("Le nombre d'utilisations doit être entre 1 et 100 000");
       return;
     }
 
@@ -274,6 +274,25 @@ const Admin = () => {
     }
 
     setIsSubmitting(false);
+  };
+
+  const handleRenewCode = async (codeId: string, codeName: string) => {
+    if (!confirm(`Renouveler le code "${codeName}" ? Le compteur d'utilisations sera remis à 0.`)) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("activation_codes")
+      .update({ current_uses: 0 })
+      .eq("id", codeId);
+
+    if (error) {
+      toast.error("Erreur lors du renouvellement");
+    } else {
+      toast.success("Code renouvelé ! Il peut être réutilisé.");
+      fetchCodes();
+      fetchStats();
+    }
   };
 
   const copyCode = (code: string) => {
@@ -447,7 +466,7 @@ const Admin = () => {
                             id="credits"
                             type="number"
                             min={1}
-                            max={1000000}
+                            max={1000}
                             value={newCredits}
                             onChange={(e) => setNewCredits(parseInt(e.target.value) || 1)}
                           />
@@ -458,7 +477,7 @@ const Admin = () => {
                             id="maxUses"
                             type="number"
                             min={1}
-                            max={10000}
+                            max={100000}
                             value={newMaxUses}
                             onChange={(e) => setNewMaxUses(parseInt(e.target.value) || 1)}
                           />
@@ -553,6 +572,17 @@ const Admin = () => {
                                 >
                                   <Pencil className="w-4 h-4" />
                                 </Button>
+                                {code.current_uses > 0 && (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    onClick={() => handleRenewCode(code.id, code.code)}
+                                    className="text-green-600 hover:text-green-700"
+                                    title="Renouveler (remettre à 0)"
+                                  >
+                                    <RefreshCw className="w-4 h-4" />
+                                  </Button>
+                                )}
                                 <Button 
                                   variant="ghost" 
                                   size="icon"
@@ -589,7 +619,7 @@ const Admin = () => {
                           id="editCredits"
                           type="number"
                           min={1}
-                          max={1000000}
+                          max={1000}
                           value={editCredits}
                           onChange={(e) => setEditCredits(parseInt(e.target.value) || 1)}
                         />
@@ -600,7 +630,7 @@ const Admin = () => {
                           id="editMaxUses"
                           type="number"
                           min={editingCode?.current_uses || 1}
-                          max={10000}
+                          max={100000}
                           value={editMaxUses}
                           onChange={(e) => setEditMaxUses(parseInt(e.target.value) || 1)}
                         />
