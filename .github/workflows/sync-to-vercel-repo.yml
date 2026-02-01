@@ -1,0 +1,20 @@
+name: Sync to Vercel Repository
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to target repo
+        run: |
+          git remote add target https://x-access-token:${{ secrets.Basoka-10/moment-maker }}@github.com/TON_USERNAME/NOM_DU_REPO_B.git
+          git push target main:main --force
