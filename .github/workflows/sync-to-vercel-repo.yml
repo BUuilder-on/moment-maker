@@ -16,5 +16,5 @@ jobs:
 
       - name: Push to target repo
         run: |
-          git remote add target https://x-access-token:${{ secrets.Basoka-10/moment-maker }}@github.com/TON_USERNAME/NOM_DU_REPO_B.git
+          git remote add target https://x-access-token:${{ secrets.TARGET_REPO_TOKEN }}@github.com/Basoka-10/moment-maker.git
           git push target main:main --force
