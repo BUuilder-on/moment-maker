@@ -30,7 +30,7 @@ const codeSchema = z.object({
     .regex(/^[A-Z0-9]+$/, "Le code ne peut contenir que des lettres majuscules et chiffres"),
   credits: z.number()
     .min(1, "Minimum 1 crédit")
-    .max(1000, "Maximum 1000 crédits"),
+    .max(1000000, "Maximum 1 000 000 crédits"),
   maxUses: z.number()
     .min(1, "Minimum 1 utilisation")
     .max(10000, "Maximum 10000 utilisations")
@@ -244,8 +244,8 @@ const Admin = () => {
       return;
     }
 
-    if (editCredits < 1 || editCredits > 1000) {
-      toast.error("Les crédits doivent être entre 1 et 1000");
+    if (editCredits < 1 || editCredits > 1000000) {
+      toast.error("Les crédits doivent être entre 1 et 1 000 000");
       return;
     }
 
@@ -447,7 +447,7 @@ const Admin = () => {
                             id="credits"
                             type="number"
                             min={1}
-                            max={1000}
+                            max={1000000}
                             value={newCredits}
                             onChange={(e) => setNewCredits(parseInt(e.target.value) || 1)}
                           />
@@ -589,7 +589,7 @@ const Admin = () => {
                           id="editCredits"
                           type="number"
                           min={1}
-                          max={1000}
+                          max={1000000}
                           value={editCredits}
                           onChange={(e) => setEditCredits(parseInt(e.target.value) || 1)}
                         />
