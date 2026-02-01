@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User, CreditCard } from "lucide-react";
+import { Plus, Trash2, Users, MessageSquare, Ticket, Copy, Shield, Send, Calendar, Clock, User, CreditCard, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +79,12 @@ const Admin = () => {
   const [newMaxUses, setNewMaxUses] = useState(1);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit code form
+  const [editingCode, setEditingCode] = useState<ActivationCode | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editCredits, setEditCredits] = useState(2);
+  const [editMaxUses, setEditMaxUses] = useState(1);
 
   // Message creation form
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false);
@@ -203,7 +209,11 @@ const Admin = () => {
     setIsSubmitting(false);
   };
 
-  const handleDeleteCode = async (codeId: string) => {
+  const handleDeleteCode = async (codeId: string, codeName: string) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer le code "${codeName}" ?`)) {
+      return;
+    }
+    
     const { error } = await supabase
       .from("activation_codes")
       .delete()
@@ -216,6 +226,54 @@ const Admin = () => {
       fetchCodes();
       fetchStats();
     }
+  };
+
+  const openEditDialog = (code: ActivationCode) => {
+    setEditingCode(code);
+    setEditCredits(code.credits);
+    setEditMaxUses(code.max_uses);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateCode = async () => {
+    if (!editingCode) return;
+
+    // Validate - max_uses cannot be less than current_uses
+    if (editMaxUses < editingCode.current_uses) {
+      toast.error(`Le nombre d'utilisations ne peut pas être inférieur à ${editingCode.current_uses} (déjà utilisé)`);
+      return;
+    }
+
+    if (editCredits < 1 || editCredits > 1000) {
+      toast.error("Les crédits doivent être entre 1 et 1000");
+      return;
+    }
+
+    if (editMaxUses < 1 || editMaxUses > 10000) {
+      toast.error("Le nombre d'utilisations doit être entre 1 et 10000");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const { error } = await supabase
+      .from("activation_codes")
+      .update({ 
+        credits: editCredits,
+        max_uses: editMaxUses
+      })
+      .eq("id", editingCode.id);
+
+    if (error) {
+      toast.error("Erreur lors de la modification");
+    } else {
+      toast.success("Code modifié avec succès");
+      setIsEditDialogOpen(false);
+      setEditingCode(null);
+      fetchCodes();
+    }
+
+    setIsSubmitting(false);
   };
 
   const copyCode = (code: string) => {
@@ -483,19 +541,27 @@ const Admin = () => {
                                   variant="ghost" 
                                   size="icon"
                                   onClick={() => copyCode(code.code)}
+                                  title="Copier le code"
                                 >
                                   <Copy className="w-4 h-4" />
                                 </Button>
-                                {code.current_uses === 0 && (
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon"
-                                    onClick={() => handleDeleteCode(code.id)}
-                                    className="text-destructive hover:text-destructive"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                )}
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => openEditDialog(code)}
+                                  title="Modifier"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => handleDeleteCode(code.id, code.code)}
+                                  className="text-destructive hover:text-destructive"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -505,6 +571,65 @@ const Admin = () => {
                   </TableBody>
                 </Table>
               </Card>
+
+              {/* Edit Code Dialog */}
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Modifier le code</DialogTitle>
+                    <DialogDescription>
+                      Modifier les paramètres du code <span className="font-mono font-bold">{editingCode?.code}</span>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="editCredits">Crédits par personne</Label>
+                        <Input
+                          id="editCredits"
+                          type="number"
+                          min={1}
+                          max={1000}
+                          value={editCredits}
+                          onChange={(e) => setEditCredits(parseInt(e.target.value) || 1)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="editMaxUses">Nombre de personnes</Label>
+                        <Input
+                          id="editMaxUses"
+                          type="number"
+                          min={editingCode?.current_uses || 1}
+                          max={10000}
+                          value={editMaxUses}
+                          onChange={(e) => setEditMaxUses(parseInt(e.target.value) || 1)}
+                        />
+                        {editingCode && editingCode.current_uses > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Minimum: {editingCode.current_uses} (déjà utilisé)
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Ce code pourra être utilisé par {editMaxUses} personne{editMaxUses > 1 ? 's' : ''}, 
+                      chacune recevant {editCredits} crédit{editCredits > 1 ? 's' : ''}.
+                    </p>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                      Annuler
+                    </Button>
+                    <Button 
+                      onClick={handleUpdateCode} 
+                      disabled={isSubmitting}
+                      className="bg-dore hover:bg-dore-dark text-accent-foreground"
+                    >
+                      {isSubmitting ? "Modification..." : "Enregistrer"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             {/* Users Tab */}
