@@ -13,8 +13,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Push to target repo
         run: |
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          git remote remove target || true
           git remote add target https://x-access-token:${{ secrets.TARGET_REPO_TOKEN }}@github.com/Basoka-10/moment-maker.git
           git push target main:main --force
