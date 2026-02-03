@@ -1,122 +1,59 @@
 
+Objectif
+- Corriger l’erreur 403 “Permission … denied to github-actions[bot]” dans le workflow de synchronisation Repo A → Repo B.
+- Répondre à ta question : le token se “crée” sur le compte GitHub (Basoka-10), puis on le stocke en secret dans Repo A.
 
-# Plan : Synchronisation automatique entre deux dépôts GitHub
+Constat (cause la plus probable)
+- Ton YAML utilise bien l’URL avec `${{ secrets.TARGET_REPO_TOKEN }}`.
+- Mais `actions/checkout@v4` configure par défaut des identifiants Git via le `GITHUB_TOKEN` (github-actions[bot]) en ajoutant un header Git (`http.https://github.com/.extraheader`).
+- Du coup, au moment du `git push`, Git réutilise ces identifiants “github-actions[bot]” au lieu du PAT dans l’URL, et GitHub refuse l’accès au Repo B ⇒ 403.
 
-## Contexte
+Réponse à ta question (important)
+- Le PAT (token Classic `ghp_...`) se génère dans le compte GitHub propriétaire (ici Basoka-10) : Settings → Developer settings → Personal access tokens.
+- Ensuite, tu colles ce token dans Repo A (le repo source) comme Secret Actions : `TARGET_REPO_TOKEN`.
+- Repo B n’a pas besoin de contenir le token dans ses secrets (c’est Repo A qui pousse vers Repo B).
 
-Tu as actuellement :
-- **Repo A** : Connecté à Lovable (reçoit les commits quand tu publies)
-- **Repo B** : Connecté à Vercel (déclenche les déploiements)
+Changements prévus (workflow)
+1) Empêcher actions/checkout d’injecter les credentials “github-actions[bot]”
+- Modifier l’étape checkout pour ajouter :
+  - `persist-credentials: false`
+- Effet : Git n’utilise plus automatiquement le GITHUB_TOKEN pour toutes les URLs GitHub, et ton `git push` utilisera le PAT.
 
-L'objectif est de faire en sorte que chaque fois que du code arrive sur le Repo A, il soit automatiquement copié vers le Repo B.
+2) (Option de sécurité supplémentaire) Nettoyer explicitement l’extraheader avant le push
+- Dans l’étape “Push to target repo”, ajouter avant `git remote add` :
+  - `git config --global --unset-all http.https://github.com/.extraheader || true`
+- Effet : même si un header a été défini, on le retire pour forcer l’auth via PAT.
 
----
+3) Rendre la commande idempotente
+- Pour éviter l’erreur si le remote “target” existe déjà lors d’un re-run :
+  - `git remote remove target || true`
+  - puis `git remote add target ...`
 
-## Étapes à suivre (à faire manuellement sur GitHub)
+Extrait cible (à appliquer dans .github/workflows/sync-to-vercel-repo.yml)
+- Checkout :
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+      persist-credentials: false
+- Push :
+  - git config --global --unset-all http.https://github.com/.extraheader || true
+  - git remote remove target || true
+  - git remote add target https://x-access-token:${{ secrets.TARGET_REPO_TOKEN }}@github.com/Basoka-10/moment-maker.git
+  - git push target main:main --force
 
-### Étape 1 : Créer un Personal Access Token (PAT)
+Validation (à tester end-to-end)
+1) Repo A → Actions → relancer le workflow.
+2) Vérifier que les logs ne mentionnent plus “denied to github-actions[bot]”.
+3) Vérifier qu’un nouveau commit apparaît bien dans Repo B.
+4) Vérifier que Vercel déclenche bien le déploiement.
 
-1. Va sur **GitHub.com** → clique sur ton avatar → **Settings**
-2. Dans le menu de gauche, descends jusqu'à **Developer settings**
-3. Clique sur **Personal access tokens** → **Tokens (classic)**
-4. Clique sur **Generate new token (classic)**
-5. Donne un nom comme `sync-repos`
-6. Coche les permissions :
-   - `repo` (accès complet aux repositories)
-7. Clique sur **Generate token**
-8. **COPIE LE TOKEN** immédiatement (tu ne pourras plus le voir après)
+Plan B si ça échoue encore (diagnostic rapide)
+- Vérifier que le secret `TARGET_REPO_TOKEN` existe bien dans Repo A (Actions secrets) et qu’il a été mis à jour avec le dernier token généré.
+- Vérifier que le token a bien le scope `repo`.
+- Vérifier que Repo B n’a pas été transféré/renommé (l’URL doit être exacte).
 
----
-
-### Étape 2 : Ajouter le token comme secret dans le Repo A
-
-1. Va sur le **Repo A** (celui connecté à Lovable)
-2. Clique sur **Settings** → **Secrets and variables** → **Actions**
-3. Clique sur **New repository secret**
-4. Nom : `TARGET_REPO_TOKEN`
-5. Valeur : colle le token que tu as copié
-6. Clique sur **Add secret**
-
----
-
-### Étape 3 : Créer le fichier GitHub Action
-
-Dans le **Repo A**, crée le fichier `.github/workflows/sync-to-vercel-repo.yml` avec ce contenu :
-
-```yaml
-name: Sync to Vercel Repository
-
-on:
-  push:
-    branches:
-      - main  # ou 'master' selon ta branche principale
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Push to target repo
-        run: |
-          git remote add target https://x-access-token:${{ secrets.TARGET_REPO_TOKEN }}@github.com/TON_USERNAME/NOM_DU_REPO_B.git
-          git push target main:main --force
-```
-
-**Important** : Remplace dans le fichier :
-- `TON_USERNAME` → le nom d'utilisateur GitHub du compte où est le Repo B
-- `NOM_DU_REPO_B` → le nom exact du repository B
-- `main` → par `master` si c'est le nom de ta branche principale
-
----
-
-### Étape 4 : Tester la synchronisation
-
-1. Fais un petit changement dans Lovable
-2. Clique sur **Publish**
-3. Va sur le **Repo A** → onglet **Actions**
-4. Tu devrais voir le workflow s'exécuter
-5. Une fois terminé, vérifie que le code est arrivé sur le **Repo B**
-6. Vercel devrait automatiquement déployer
-
----
-
-## Résumé visuel du flux
-
-```text
-┌─────────────┐      push       ┌──────────────┐
-│   Lovable   │ ──────────────▶ │   Repo A     │
-└─────────────┘                 │  (GitHub)    │
-                                └──────┬───────┘
-                                       │
-                                       │ GitHub Action
-                                       │ (sync automatique)
-                                       ▼
-                                ┌──────────────┐      auto-deploy    ┌──────────────┐
-                                │   Repo B     │ ──────────────────▶ │    Vercel    │
-                                │  (GitHub)    │                     │              │
-                                └──────────────┘                     └──────────────┘
-```
-
----
-
-## Notes importantes
-
-- Le `--force` dans la commande git écrase le contenu du Repo B avec celui du Repo A
-- Si tu fais des modifications directement sur le Repo B, elles seront perdues à la prochaine sync
-- Le workflow se déclenche uniquement sur les push vers la branche `main`
-
----
-
-## Section technique
-
-| Élément | Détail |
-|---------|--------|
-| Fichier à créer | `.github/workflows/sync-to-vercel-repo.yml` |
-| Secret requis | `TARGET_REPO_TOKEN` (Personal Access Token) |
-| Permissions token | `repo` (full control) |
-| Déclencheur | Push sur branche main |
-
+Idées de suites (optionnel)
+- Tester la sync end-to-end après chaque changement (Repo A → Repo B → Vercel).
+- Remplacer le `--force` par un push “normal” si tu veux éviter d’écraser l’historique de Repo B.
+- Ajouter une étape qui affiche `git remote -v` et `git status` (sans exposer le token) pour faciliter le debug.
+- Ajouter une protection “si le workflow vient d’un PR, ne pas sync” (pour éviter des push inattendus).
