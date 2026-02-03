@@ -8,6 +8,7 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout source repo
         uses: actions/checkout@v4
@@ -17,7 +18,16 @@ jobs:
 
       - name: Push to target repo
         run: |
+          # 1) Enlever toute auth injectée par GitHub Actions (bot) - global + local
           git config --global --unset-all http.https://github.com/.extraheader || true
+          git config --local  --unset-all http.https://github.com/.extraheader || true
+          git config --unset-all http.https://github.com/.extraheader || true
+
+          # 2) (re-run safe) reset du remote
           git remote remove target || true
+
+          # 3) Remote avec PAT via secret (ne JAMAIS mettre le token en clair)
           git remote add target https://x-access-token:${{ secrets.TARGET_REPO_TOKEN }}@github.com/Basoka-10/moment-maker.git
-          git push target main:main --force
+
+          # 4) Push en neutralisant l'extraheader juste pour cette commande (anti-régression)
+          git -c http.https://github.com/.extraheader= push target HEAD:main --force
